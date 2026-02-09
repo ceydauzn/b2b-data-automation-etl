@@ -1,0 +1,13 @@
+{
+    "python.analysis.extraPaths": [
+        "C:\\Users\\CEYDA\\AppData\\Local\\Packages\\PythonSoftwareFoundation.Python.3.12_qbz5n2kfra8p0\\LocalCache\\local-packages\\Python312\\site-packages"
+    ],
+    
+    "python.languageServer": "Pylance",
+    "python.analysis.typeCheckingMode": "off",
+    "python.analysis.diagnosticSeverityOverrides": {
+        "reportAttributeAccessIssue": "none",
+        "reportMissingImports": "none",
+        "reportMissingModuleSource": "none"
+    }
+}
