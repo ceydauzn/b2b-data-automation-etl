@@ -1,1 +1,1 @@
-dsfd
+print(yeniyıl)
