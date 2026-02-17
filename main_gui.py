@@ -158,47 +158,46 @@ class ModernB2BApp(ctk.CTk):
 
     def ziyaretci_karar_simule_et(self, karar):
         """
-        Döküman Madde 1-a ve 1-b Entegrasyonu:
-        Ziyaretçiden bilgiyi gizler, sadece ADMİN'e detaylı rapor sunar.
+        Döküman Madde 1-a (Gerçek Konum) ve 1-b (IP Takip) Entegrasyonu:
+        Ziyaretçiden bilgiyi gizler, Admin'e SİZİN GERÇEK verilerinizi sunar.
         """
+        import visitor_tracker # Gerçek verileri çekmek için
+
         if karar == "Evet":
-            # 1-a: Konum bilgisi eşleştirme (Admin için gizli detaylar)
-            firma = "Bosch Engineering GmbH" # Örnek tespit
-            lokasyon = "Berlin, Almanya"
-            koor = "52.5200, 13.4050"
+            # 1-a: GERÇEK VERİLERİ ÇEK (Statik Berlin verisi silindi)
+            data = visitor_tracker.gercek_ip_ve_firma_analiz_et()
             
             # Ekranda ziyaretçinin gördüğü (Hassas bilgi içermez)
-            self.v_label.configure(text="✅ Tercihiniz kaydedildi. Sistem optimize ediliyor.", text_color="#10b981")
+            self.v_label.configure(text="✅ Konum eşleşti. Yerel pazar verileri optimize ediliyor.", text_color="#10b981")
             
-            # SADECE ADMİNİN GÖRECEĞİ GİZLİ PENCERE
+            # SADECE ADMİNİN (SİZİN) GÖRECEĞİ GERÇEK RAPOR
             admin_mesaj = (
-                f"🛡️ YÖNETİCİ İSTİHBARAT RAPORU\n"
+                f"🛡️ YÖNETİCİ İSTİHBARAT RAPORU (CANLI)\n"
                 f"----------------------------------\n"
-                f"🏢 TESPİT EDİLEN FİRMA: {firma}\n"
-                f"🌍 LOKASYON: {lokasyon}\n"
-                f"📍 KOORDİNAT: {koor}\n"
-                f"🔍 DURUM: Çerezler ve Konum Servisi eşleşti."
+                f"🏢 TESPİT EDİLEN AĞ/FİRMA: {data['Firma']}\n"
+                f"🌍 LOKASYON: {data['Sehir']}, {data['Ulke']}\n"
+                f"📍 KOORDİNAT: {data['Lat']}, {data['Lon']}\n"
+                f"🔢 GERÇEK IP: {data['IP']}\n"
+                f"🔍 DURUM: Nokta atışı konum doğrulandı."
             )
             messagebox.showinfo("Admin Özel Panel", admin_mesaj)
             
         else:
-            # 1-b: IP adresi üzerinden gizli izleme
-            tahmini_iss = "Telefonica Spain (Data Center)"
-            ip = "176.88.xx.xx"
+            # 1-b: IP üzerinden kısıtlı takip
+            data = visitor_tracker.gercek_ip_ve_firma_analiz_et()
             
             # Ekranda ziyaretçinin gördüğü
             self.v_label.configure(text="⚠️ Konum reddedildi. Standart güvenlik moduna geçildi.", text_color="#fbbf24")
             
-            # SADECE ADMİNİN GÖRECEĞİ GİZLİ PENCERE
+            # SADECE ADMİNİN GÖRECEĞİ IP RAPORU
             admin_ip_mesaj = (
                 f"🕵️ YÖNETİCİ IP ANALİZ RAPORU\n"
                 f"----------------------------------\n"
-                f"🔢 ZİYARETÇİ IP: {ip}\n"
-                f"📡 SERVİS SAĞLAYICI: {tahmini_iss}\n"
-                f"⚙️ DURUM: IP adresi firma veritabanıyla sorgulanıyor."
+                f"🔢 ZİYARETÇİ IP: {data['IP']}\n"
+                f"📡 SERVİS SAĞLAYICI: {data['ISS']}\n"
+                f"⚙️ DURUM: Konum izni yok, sadece ağ verisi çekildi."
             )
             messagebox.showwarning("Admin Gizli IP Takibi", admin_ip_mesaj)
-
     def start_web_search_thread(self):
         oem = self.oem_entry.get()
         gtip = self.gtip_entry.get()
