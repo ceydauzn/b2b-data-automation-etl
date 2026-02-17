@@ -3,15 +3,33 @@ from tkinter import messagebox
 import threading
 import time
 import pandas as pd
+import pycountry
 
-# Yazdığımız modülleri içe aktarıyoruz
+# --- YARDIMCI FONKSİYONLAR ---
+def dunya_verilerini_hazirla():
+    """Tüm ülkeleri alfabetik ve düzenli bir liste haline getirir."""
+    data = []
+    data.append({"display": "Global (.com)", "code": "us", "extension": ".com"})
+    sorted_countries = sorted(pycountry.countries, key=lambda x: x.name)
+    for country in sorted_countries:
+        try:
+            data.append({
+                "display": f"{country.name} (.{country.alpha_2.lower()})",
+                "code": country.alpha_2.lower(),
+                "extension": f".{country.alpha_2.lower()}"
+            })
+        except: continue
+    return data
+
+# Modül içe aktarmaları
 try:
     from image_search_engine import global_pazar_taramasi
     from maps_scraper import google_maps_tara
+    from visitor_tracker import ip_tabanli_firma_bul, koordinat_tabanli_firma_bul
 except ImportError:
-    print("Uyarı: Bazı modül dosyaları bulunamadı. Lütfen image_search_engine.py ve maps_scraper.py dosyalarını kontrol edin.")
+    print("Uyarı: Bazı modül dosyaları bulunamadı.")
 
-# Görünüm ayarları
+# --- TASARIM AYARLARI ---
 ctk.set_appearance_mode("Dark") 
 ctk.set_default_color_theme("blue") 
 
@@ -19,138 +37,226 @@ class ModernB2BApp(ctk.CTk):
     def __init__(self):
         super().__init__()
 
-        self.title("Global B2B Hunter v2.0")
-        self.geometry("700x550")
+        # Pencere Ayarları
+        self.title("Global B2B Hunter Enterprise v2.0")
+        self.geometry("950x800")
+        
+        # Ülke veritabanı
+        self.ulke_listesi = dunya_verilerini_hazirla()
 
-        # Grid yapısı
+        # Grid Yapılandırması
         self.grid_columnconfigure(1, weight=1)
         self.grid_rowconfigure(0, weight=1)
 
-        # --- YAN MENÜ ---
-        self.sidebar_frame = ctk.CTkFrame(self, width=140, corner_radius=0)
+        # --- SOL PANEL (SIDEBAR) ---
+        self.sidebar_frame = ctk.CTkFrame(self, width=200, corner_radius=0)
         self.sidebar_frame.grid(row=0, column=0, sticky="nsew")
         
-        self.logo_label = ctk.CTkLabel(self.sidebar_frame, text="B2B HUNTER", font=ctk.CTkFont(size=20, weight="bold"))
-        self.logo_label.grid(row=0, column=0, padx=20, pady=(20, 10))
+        self.logo_label = ctk.CTkLabel(self.sidebar_frame, text="HUNTER CORE", 
+                                       font=ctk.CTkFont(family="Inter", size=22, weight="bold"),
+                                       text_color="#38bdf8")
+        self.logo_label.grid(row=0, column=0, padx=20, pady=(30, 40))
 
-        # Harita Modülü Butonu
-        self.map_btn = ctk.CTkButton(self.sidebar_frame, text="Harita Modülü", command=self.run_map_process)
-        self.map_btn.grid(row=1, column=0, padx=20, pady=10)
+        self.map_btn = ctk.CTkButton(self.sidebar_frame, text="📍 Harita Modülü", 
+                                     font=ctk.CTkFont(size=14, weight="bold"),
+                                     height=40,
+                                     command=self.run_map_process)
+        self.map_btn.grid(row=1, column=0, padx=20, pady=10, sticky="ew")
 
-        self.appearance_optionemenu = ctk.CTkOptionMenu(self.sidebar_frame, values=["Dark", "Light"], command=self.change_appearance_mode)
-        self.appearance_optionemenu.grid(row=6, column=0, padx=20, pady=(250, 20))
+        self.appearance_label = ctk.CTkLabel(self.sidebar_frame, text="Görünüm Modu:", font=ctk.CTkFont(size=12))
+        self.appearance_label.grid(row=5, column=0, padx=20, pady=(400, 0))
+        
+        self.appearance_optionemenu = ctk.CTkOptionMenu(self.sidebar_frame, values=["Dark", "Light"], 
+                                                        command=self.change_appearance_mode)
+        self.appearance_optionemenu.grid(row=6, column=0, padx=20, pady=(10, 20))
+        self.appearance_optionemenu.set("Dark")
 
         # --- ANA PANEL ---
-        self.main_frame = ctk.CTkFrame(self, corner_radius=15)
-        self.main_frame.grid(row=0, column=1, padx=20, pady=20, sticky="nsew")
+        self.main_frame = ctk.CTkFrame(self, corner_radius=20)
+        self.main_frame.grid(row=0, column=1, padx=25, pady=25, sticky="nsew")
 
-        self.title_label = ctk.CTkLabel(self.main_frame, text="İhracat İstihbarat Robotu", font=ctk.CTkFont(size=24, weight="bold"))
-        self.title_label.pack(pady=20)
+        self.header_label = ctk.CTkLabel(self.main_frame, text="İHRACAT İSTİHBARAT TERMİNALİ", 
+                                         font=ctk.CTkFont(family="Inter", size=26, weight="bold"))
+        self.header_label.pack(pady=(20, 10))
 
-        self.oem_entry = ctk.CTkEntry(self.main_frame, placeholder_text="OEM / Parça No (Örn: 260x85)", width=350, height=45)
-        self.oem_entry.pack(pady=10)
+        # --- MODÜL 1: ERİŞİM PANELİ ---
+        self.visitor_panel = ctk.CTkFrame(self.main_frame, corner_radius=15, border_width=1)
+        self.visitor_panel.pack(pady=15, padx=30, fill="x")
 
-        self.name_entry = ctk.CTkEntry(self.main_frame, placeholder_text="Parça İsmi (Örn: Piston)", width=350, height=45)
-        self.name_entry.pack(pady=10)
+        self.v_label = ctk.CTkLabel(self.visitor_panel, 
+                                    text="Size daha iyi hizmet verebilmemiz için lütfen konum bilgisini bizimle paylaşın.", 
+                                    font=ctk.CTkFont(size=13, weight="bold"), text_color="#38bdf8")
+        self.v_label.pack(pady=(20, 10))
 
-        self.country_menu = ctk.CTkOptionMenu(self.main_frame, values=[".com", ".de", ".ru", ".fr", ".it"], width=350, height=45)
-        self.country_menu.pack(pady=10)
-        self.country_menu.set(".de")
+        self.btn_frame = ctk.CTkFrame(self.visitor_panel, fg_color="transparent")
+        self.btn_frame.pack(pady=(0, 20))
 
-        self.run_button = ctk.CTkButton(self.main_frame, text="TARAMAYI BAŞLAT", font=ctk.CTkFont(size=14, weight="bold"), 
-                                        width=250, height=50, corner_radius=25, command=self.start_web_search_thread)
-        self.run_button.pack(pady=20)
+        self.yes_btn = ctk.CTkButton(self.btn_frame, text="ERİŞİME İZİN VER", width=160, height=35,
+                                     fg_color="#059669", hover_color="#10b981", 
+                                     command=lambda: self.ziyaretci_karar_simule_et("Evet"))
+        self.yes_btn.grid(row=0, column=0, padx=15)
 
-        self.progress_bar = ctk.CTkProgressBar(self.main_frame, width=400)
-        self.progress_bar.pack(pady=10)
+        self.no_btn = ctk.CTkButton(self.btn_frame, text="ERİŞİMİ REDDET", width=160, height=35,
+                                    fg_color="#dc2626", hover_color="#ef4444", 
+                                    command=lambda: self.ziyaretci_karar_simule_et("Hayır"))
+        self.no_btn.grid(row=0, column=1, padx=15)
+
+        # --- MODÜL 2: ARAMA TERMİNALİ ---
+        self.search_frame = ctk.CTkFrame(self.main_frame, corner_radius=15, fg_color="transparent")
+        self.search_frame.pack(pady=10, padx=30, fill="both", expand=True)
+
+        self.s_title = ctk.CTkLabel(self.search_frame, text="🔍 PAZAR TARAMA KRİTERLERİ", 
+                                    font=ctk.CTkFont(size=15, weight="bold"))
+        self.s_title.pack(pady=(10, 15))
+
+        self.entry_row = ctk.CTkFrame(self.search_frame, fg_color="transparent")
+        self.entry_row.pack(pady=5)
+
+        self.oem_entry = ctk.CTkEntry(self.entry_row, placeholder_text="OEM NUMARASI", width=200, height=45)
+        self.oem_entry.grid(row=0, column=0, padx=10)
+
+        self.gtip_entry = ctk.CTkEntry(self.entry_row, placeholder_text="GTIP KODU", width=200, height=45)
+        self.gtip_entry.grid(row=0, column=1, padx=10)
+
+        self.name_entry = ctk.CTkEntry(self.search_frame, placeholder_text="ÜRÜN TANIMI (İngilizce veya Yerel Dil)", 
+                                       width=420, height=45)
+        self.name_entry.pack(pady=15)
+
+        self.country_label = ctk.CTkLabel(self.search_frame, text="HEDEF PAZAR / ÜLKE:", font=ctk.CTkFont(size=12, weight="bold"))
+        self.country_label.pack(pady=(5, 0))
+        
+        ulke_isimleri = [u["display"] for u in self.ulke_listesi]
+
+        self.country_combo = ctk.CTkComboBox(
+            self.search_frame, 
+            values=ulke_isimleri, 
+            width=420, 
+            height=45,
+            justify="center"
+        )
+        self.country_combo.pack(pady=10)
+        self.country_combo.set("Global (.com)")
+
+        self.run_button = ctk.CTkButton(self.search_frame, text="KÜRESEL ANALİZİ BAŞLAT", 
+                                        font=ctk.CTkFont(size=15, weight="bold"), 
+                                        width=350, height=55, corner_radius=30, 
+                                        fg_color="#0284c7", hover_color="#0369a1",
+                                        command=self.start_web_search_thread)
+        self.run_button.pack(pady=25)
+
+        self.progress_bar = ctk.CTkProgressBar(self.search_frame, width=500, height=12)
+        self.progress_bar.pack(pady=5)
         self.progress_bar.set(0)
 
-        self.status_label = ctk.CTkLabel(self.main_frame, text="Sistem Hazır", font=("Arial", 12))
-        self.status_label.pack(pady=5)
+        self.status_label = ctk.CTkLabel(self.search_frame, text="SİSTEM DURUMU: BEKLEMEDE", 
+                                         font=ctk.CTkFont(size=12))
+        self.status_label.pack(pady=10)
 
+    # --- TEKNİK FONKSİYONLAR ---
     def change_appearance_mode(self, new_appearance_mode):
         ctk.set_appearance_mode(new_appearance_mode)
 
-    # --- WEB TARAMA THREAD YÖNETİMİ ---
+    def ziyaretci_karar_simule_et(self, karar):
+        """
+        Döküman Madde 1-a ve 1-b Entegrasyonu:
+        Ziyaretçiden bilgiyi gizler, sadece ADMİN'e detaylı rapor sunar.
+        """
+        if karar == "Evet":
+            # 1-a: Konum bilgisi eşleştirme (Admin için gizli detaylar)
+            firma = "Bosch Engineering GmbH" # Örnek tespit
+            lokasyon = "Berlin, Almanya"
+            koor = "52.5200, 13.4050"
+            
+            # Ekranda ziyaretçinin gördüğü (Hassas bilgi içermez)
+            self.v_label.configure(text="✅ Tercihiniz kaydedildi. Sistem optimize ediliyor.", text_color="#10b981")
+            
+            # SADECE ADMİNİN GÖRECEĞİ GİZLİ PENCERE
+            admin_mesaj = (
+                f"🛡️ YÖNETİCİ İSTİHBARAT RAPORU\n"
+                f"----------------------------------\n"
+                f"🏢 TESPİT EDİLEN FİRMA: {firma}\n"
+                f"🌍 LOKASYON: {lokasyon}\n"
+                f"📍 KOORDİNAT: {koor}\n"
+                f"🔍 DURUM: Çerezler ve Konum Servisi eşleşti."
+            )
+            messagebox.showinfo("Admin Özel Panel", admin_mesaj)
+            
+        else:
+            # 1-b: IP adresi üzerinden gizli izleme
+            tahmini_iss = "Telefonica Spain (Data Center)"
+            ip = "176.88.xx.xx"
+            
+            # Ekranda ziyaretçinin gördüğü
+            self.v_label.configure(text="⚠️ Konum reddedildi. Standart güvenlik moduna geçildi.", text_color="#fbbf24")
+            
+            # SADECE ADMİNİN GÖRECEĞİ GİZLİ PENCERE
+            admin_ip_mesaj = (
+                f"🕵️ YÖNETİCİ IP ANALİZ RAPORU\n"
+                f"----------------------------------\n"
+                f"🔢 ZİYARETÇİ IP: {ip}\n"
+                f"📡 SERVİS SAĞLAYICI: {tahmini_iss}\n"
+                f"⚙️ DURUM: IP adresi firma veritabanıyla sorgulanıyor."
+            )
+            messagebox.showwarning("Admin Gizli IP Takibi", admin_ip_mesaj)
+
     def start_web_search_thread(self):
         oem = self.oem_entry.get()
+        gtip = self.gtip_entry.get()
         name = self.name_entry.get()
-        country = self.country_menu.get()
-
-        if not name: # OEM zorunlu değil ama isim şart
-            messagebox.showwarning("Eksik Veri", "Lütfen bir Parça İsmi giriniz.")
+        secilen_display = self.country_combo.get() 
+        ulke_verisi = next((u for u in self.ulke_listesi if u["display"] == secilen_display), 
+                           {"extension": ".com", "code": "us", "display": "Global (.com)"})
+        if not name:
+            messagebox.showwarning("Giriş Hatası", "Ürün Tanımı girmelisiniz.")
             return
-
-        self.run_button.configure(state="disabled", text="Aranıyor...")
-        self.status_label.configure(text=f"{country} pazarı taranıyor...", text_color="orange")
+        self.run_button.configure(state="disabled", text="ANALİZ YAPILIYOR...")
+        self.status_label.configure(text=f"BOT DURUMU: {ulke_verisi['display']} taranıyor...")
         self.progress_bar.set(0.3)
-        
-        # Arka planda çalıştır
-        threading.Thread(target=self.web_search_worker, args=(oem, name, country), daemon=True).start()
+        threading.Thread(target=self.web_search_worker, 
+                         args=(oem, name, ulke_verisi['extension'], gtip, ulke_verisi['code']), 
+                         daemon=True).start()
 
-    def web_search_worker(self, oem, name, country):
+    def web_search_worker(self, oem, name, extension, gtip, country_code):
         try:
-            # image_search_engine.py içindeki ana fonksiyonu çağırır
-            sonuclar = global_pazar_taramasi(oem, name, country)
+            sonuclar = global_pazar_taramasi(oem, name, extension, gtip_no=gtip)
             self.after(0, lambda: self.search_finished(len(sonuclar), oem))
         except Exception as e:
             self.after(0, lambda: self.handle_error(e))
 
-    # --- HARİTA TARAMA THREAD YÖNETİMİ ---
     def run_map_process(self):
-        """
-        Döküman Madde 2: Harita üzerinden dükkan avlama modülünü tetikler.
-        """
         name = self.name_entry.get()
-        country = self.country_menu.get()
-        
+        secilen_display = self.country_combo.get()
+        ulke_verisi = next((u for u in self.ulke_listesi if u["display"] == secilen_display), self.ulke_listesi[0])
         if not name:
-            messagebox.showwarning("Eksik Veri", "Harita taraması için bir sektör/parça ismi girin.")
+            messagebox.showwarning("Eksik Veri", "Sektör ismi girin.")
             return
-
-        self.map_btn.configure(state="disabled", text="Taranıyor...")
-        self.status_label.configure(text="Google Maps dükkanları taranıyor (Selenium)...", text_color="cyan")
-        self.progress_bar.set(0.5)
-        
-        # Arayüzün donmaması için Selenium'u ayrı bir thread'de başlatıyoruz
-        threading.Thread(target=self.map_worker, args=(name, country), daemon=True).start()
+        self.map_btn.configure(state="disabled")
+        threading.Thread(target=self.map_worker, args=(name, ulke_verisi['extension']), daemon=True).start()
 
     def map_worker(self, name, country):
         try:
-            # maps_scraper.py içindeki fonksiyonu çağırıyoruz
             sonuclar = google_maps_tara(name, country)
-            
-            # İşlem bitince Excel'e kaydedelim (maps_scraper içinde yapılmadıysa)
             if sonuclar:
                 df = pd.DataFrame(sonuclar)
-                dosya_adi = f"Maps_{name.replace(' ', '_')}_{country}.xlsx"
-                df.to_excel(dosya_adi, index=False)
-                
-                self.after(0, lambda: messagebox.showinfo("Başarılı", f"{len(sonuclar)} dükkan bulundu!\n{dosya_adi} kaydedildi."))
-            else:
-                self.after(0, lambda: messagebox.showwarning("Sonuç Yok", "Haritalarda bu kriterde dükkan bulunamadı."))
-            
+                df.to_excel(f"Maps_{name.replace(' ', '_')}_{country}.xlsx", index=False)
+                self.after(0, lambda: messagebox.showinfo("Başarılı", "Veriler kaydedildi."))
             self.after(0, self.map_finished)
         except Exception as e:
             self.after(0, lambda: self.handle_error(e))
 
     def map_finished(self):
-        self.map_btn.configure(state="normal", text="Harita Modülü")
-        self.status_label.configure(text="Harita taraması bitti.", text_color="green")
+        self.map_btn.configure(state="normal")
+        self.status_label.configure(text="SİSTEM DURUMU: HARİTA ANALİZİ TAMAMLANDI")
         self.progress_bar.set(1.0)
 
-    # --- ORTAK YARDIMCI FONKSİYONLAR ---
     def search_finished(self, count, oem):
         self.progress_bar.set(1.0)
-        self.run_button.configure(state="normal", text="TARAMAYI BAŞLAT")
-        self.status_label.configure(text="İşlem Başarıyla Tamamlandı", text_color="green")
-        messagebox.showinfo("B2B Hunter", f"Tarama Bitti!\n{count} firma analiz edildi.\nB2B_Sorgu_{oem}.xlsx oluşturuldu.")
+        self.run_button.configure(state="normal", text="KÜRESEL ANALİZİ BAŞLAT")
+        messagebox.showinfo("Analiz Tamamlandı", f"{count} adet potansiyel müşteri bulundu.")
 
     def handle_error(self, error):
-        self.run_button.configure(state="normal", text="TARAMAYI BAŞLAT")
-        self.map_btn.configure(state="normal", text="Harita Modülü")
-        self.status_label.configure(text="Hata oluştu!", text_color="red")
-        messagebox.showerror("Sistem Hatası", f"Bir hata meydana geldi:\n{error}")
+        self.run_button.configure(state="normal", text="YENİDEN DENE")
+        messagebox.showerror("Hata", f"Sistem hatası: {error}")
 
 if __name__ == "__main__":
     app = ModernB2BApp()

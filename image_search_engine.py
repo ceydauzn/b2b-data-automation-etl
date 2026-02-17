@@ -1,140 +1,112 @@
 import pandas as pd
-import requests
-from bs4 import BeautifulSoup
 import re
 from datetime import datetime
 import time
-from googlesearch import search
-from serpapi import GoogleSearch 
+import random
 from deep_translator import GoogleTranslator
+
+# Selenium Araçları
+from selenium import webdriver
+from selenium.webdriver.chrome.service import Service
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.common.by import By
+from webdriver_manager.chrome import ChromeDriverManager
 
 # --- 1. MODÜL: TEKNİK TERİM DOĞRULAMA VE ÇEVİRİ ---
 def teknik_terim_dogrula_ve_cevir(kelime, hedef_uzanti):
-    """
-    Döküman Madde 1-a & c: Kelimeyi seçilen ülkenin diline çevirir.
-    """
+    # Kapsamlı uzantı-dil haritası (Azerbaycan ve diğerleri eklendi)
     uzanti_dil_haritasi = {
-        '.de': 'de', '.ru': 'ru', '.es': 'es', 
-        '.fr': 'fr', '.it': 'it', '.com': 'en'
+        '.tr': 'tr', '.de': 'de', '.ru': 'ru', '.fr': 'fr', 
+        '.it': 'it', '.es': 'es', '.jp': 'ja', '.cn': 'zh-CN',
+        '.az': 'az', # Azerbaycan Türkçesi eklendi
+        '.pl': 'pl', '.nl': 'nl', '.gr': 'el', '.bg': 'bg'
     }
-    hedef_dil = uzanti_dil_haritasi.get(hedef_uzanti, 'en')
+    
+    # Eğer uzantı listede yoksa, pycountry veya basit mantıkla dili tahmin et
+    hedef_dil = uzanti_dil_haritasi.get(hedef_uzanti)
+    
+    if not hedef_dil:
+        # Uzantıdan (örn: .az -> az) dili tahmin etmeye çalış
+        hedef_dil = hedef_uzanti.replace(".", "")
+    
     try:
-        print(f"🌐 '{kelime}' terimi {hedef_uzanti} pazarı için çevriliyor...")
+        # Otomatik algılama ile hedef dile çevir
         cevirilmis = GoogleTranslator(source='auto', target=hedef_dil).translate(kelime)
-        print(f"✅ Teknik Karşılığı: {cevirilmis}")
+        print(f"✅ Çeviri Yapıldı: {kelime} -> {cevirilmis} ({hedef_dil.upper()})")
         return cevirilmis
     except Exception as e:
-        print(f"⚠️ Çeviri hatası: {e}. Orijinal kelime kullanılacak.")
+        print(f"⚠️ Çeviri Hatası: {e}. Orijinal terim kullanılıyor.")
         return kelime
+# --- 2. MODÜL: AKILLI ARAMA MOTORU (ÜLKE VE DİL MANİPÜLASYONU) ---
+def google_canli_arama(oem_no, gtip_no, yerel_parca_ismi, ulke_uzantisi, adet=10):
+    """
+    Seçilen ülkeye göre Google'ın yerel versiyonunu ve dil ayarlarını kullanır.
+    """
+    chrome_options = Options()
+    chrome_options.add_argument("--headless") # Arka plan modu
+    chrome_options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36")
 
-# --- 2. MODÜL: B2B İLETİŞİM AYIKLAYICI ---
-def b2b_iletisim_tara(url):
-    """Web sitesinin içine girip e-postaları ayıklar."""
-    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"}
-    try:
-        if not url.startswith("http"):
-            url = "https://" + url
-        
-        response = requests.get(url, headers=headers, timeout=10)
-        if response.status_code == 200:
-            soup = BeautifulSoup(response.content, "html.parser")
-            metin = soup.get_text()
-            
-            mail_deseni = r'[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}'
-            mailler = list(set(re.findall(mail_deseni, metin)))
-            
-            oncelikli = "Bulunamadı"
-            for m in mailler:
-                if any(k in m.lower() for k in ['purchasing', 'sales', 'info', 'manager', 'buying', 'contact']):
-                    oncelikli = m
-                    break
-            if oncelikli == "Bulunamadı" and mailler:
-                oncelikli = mailler[0]
-                
-            return ", ".join(mailler), oncelikli
-    except:
-        return "Erişilemedi", "Erişilemedi"
-    return "Bulunamadı", "Bulunamadı"
-
-# --- 3. MODÜL: AKILLI ARAMA MOTORU ---
-def google_canli_arama(oem_no, yerel_parca_ismi, ulke_uzantisi, adet=5):
-    """Hem API hem de ücretsiz arama ile linkleri toplar."""
-    linkler = []
+    driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=chrome_options)
     
-    # --- SERPAPI ANAHTARI ---
-    # Eğer API anahtarın varsa buraya yazabilirsin.
-    SERP_API_KEY = "BURAYA_KENDI_API_ANAHTARINI_YAZ" 
-
-    if SERP_API_KEY and SERP_API_KEY != "BURAYA_KENDI_API_ANAHTARINI_YAZ":
-        print(f"🚀 SerpApi üzerinden '{yerel_parca_ismi}' olarak aranıyor...")
-        try:
-            params = {
-                "q": f"{oem_no} {yerel_parca_ismi} site:*{ulke_uzantisi}",
-                "location": "Global",
-                "api_key": SERP_API_KEY
-            }
-            search_api = GoogleSearch(params)
-            results = search_api.get_dict().get("organic_results", [])
-            linkler = [r.get("link") for r in results[:adet]]
-            if linkler: print(f"✅ API ile {len(linkler)} sonuç getirildi.")
-        except Exception as e:
-            print(f"⚠️ API Hatası: {e}. Ücretsiz yönteme geçiliyor.")
-
-    # API başarısızsa veya yoksa ücretsiz yöntem
-    if not linkler:
-        print(f"🔍 Ücretsiz yöntem deneniyor: {yerel_parca_ismi}")
-        sorgular = [
-            f"{oem_no} {yerel_parca_ismi} {ulke_uzantisi}",
-            f"{yerel_parca_ismi} supplier {ulke_uzantisi}"
-        ]
-        for sorgu in sorgular:
+    # --- VALENTIN MANTIĞI: DİNAMİK URL OLUŞTURMA ---
+    # Uzantıyı temizle (örn: .de -> de)
+    u_kodu = ulke_uzantisi.replace(".", "")
+    if u_kodu == "com": u_kodu = "us" # Global için ABD varsayılan
+    
+    # Yerel Google alan adını belirle (google.de, google.fr vb.)
+    google_domain = f"google.{u_kodu}" if u_kodu != "us" else "google.com"
+    
+    # Sorgu ve Parametreler (gl=konum, hl=dil)
+    sorgu = f"{oem_no} {yerel_parca_ismi} supplier"
+    url = f"https://www.{google_domain}/search?q={sorgu}&gl={u_kodu}&hl={u_kodu}"
+    
+    print(f"🌍 Valentin Simülasyonu: {google_domain} üzerinden {u_kodu.upper()} konumuyla aranıyor...")
+    
+    linkler = []
+    try:
+        driver.get(url)
+        time.sleep(random.uniform(5, 8)) # Sayfa yüklenmesi için insansı bekleme
+        
+        # Sonuçları topla
+        search_results = driver.find_elements(By.CSS_SELECTOR, "div.yuRUbf a")
+        for res in search_results:
+            link = res.get_attribute("href")
+            if link and "google.com" not in link and link.startswith("http"):
+                if link not in linkler:
+                    linkler.append(link)
             if len(linkler) >= adet: break
-            try:
-                for j in search(sorgu, num_results=adet):
-                    if j not in linkler:
-                        linkler.append(j)
-                    if len(linkler) >= adet: break
-                if linkler: break
-                time.sleep(2)
-            except:
-                continue
-                
+            
+    except Exception as e:
+        print(f"⚠️ Arama Hatası: {e}")
+    finally:
+        driver.quit()
+    
     return linkler
 
-# --- 4. MODÜL: ANA İŞLEYİCİ (Global Pazar Taraması) ---
-def global_pazar_taramasi(oem_no, parca_ismi, ulke_uzantisi):
-    """
-    Arayüz (GUI) tarafından çağrılan ana fonksiyon. 
-    Tüm iş akışını yönetir.
-    """
-    print(f"\n🚀 {ulke_uzantisi} Pazarı Analiz Ediliyor...")
-    
-    # 1. Parça ismini hedef dile çevir
+# --- 3. MODÜL: ANA İŞLEYİCİ ---
+def global_pazar_taramasi(oem_no, parca_ismi, ulke_uzantisi, gtip_no=""):
+    # 1. Çeviriyi hedef ülkeye göre yap
     yerel_isim = teknik_terim_dogrula_ve_cevir(parca_ismi, ulke_uzantisi)
+    print(f"🔎 Aranan Terim: {yerel_isim} ({ulke_uzantisi})")
     
-    # 2. Google'dan linkleri topla
-    bulunan_linkler = google_canli_arama(oem_no, yerel_isim, ulke_uzantisi)
+    # 2. Google engelini Selenium ve Yerel Parametrelerle aş
+    bulunan_linkler = google_canli_arama(oem_no, gtip_no, yerel_isim, ulke_uzantisi)
     
     final_listesi = []
     if not bulunan_linkler:
-        print("❌ Hiçbir sonuç bulunamadı.")
         return []
 
-    # 3. Bulunan siteleri tek tek analiz et
+    # 3. İletişim bilgilerini topla (Scraper fonksiyonun burada çalışır)
     for url in bulunan_linkler:
-        print(f"🔎 Veri çekiliyor: {url}")
+        from maps_scraper import b2b_iletisim_tara # Eğer fonksiyon oradaysa
         mailler, yetkili = b2b_iletisim_tara(url)
         
         final_listesi.append({
             "OEM No": oem_no,
-            "Aranan Terim": parca_ismi,
-            "Yerel Karşılık": yerel_isim,
-            "Ülke": ulke_uzantisi,
+            "GTIP No": gtip_no,
             "Web Sitesi": url,
             "E-postalar": mailler,
-            "Öncelikli Yetkili": yetkili,
+            "Ülke": ulke_uzantisi,
             "Tarama Tarihi": datetime.now().strftime("%d/%m/%Y")
         })
-        time.sleep(1) # Banlanma önleyici bekleme
-        
     return final_listesi

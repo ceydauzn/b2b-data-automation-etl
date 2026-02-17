@@ -1,29 +1,45 @@
 import cv2
 import numpy as np
 
-def resim_analiz_et(resim_yolu):
-    image = cv2.imread(resim_yolu)
-    if image is None:
-        return "Hata: Resim dosyası bulunamadı."
+def resim_karsilastir(referans_resim_yolu, hedef_resim_yolu):
+    """
+    Döküman Madde 2-e: Ürün resmiyle eşleşen siteleri bulmak için 
+    iki resmi karşılaştırır ve benzerlik oranını döner.
+    """
+    # Resimleri oku
+    img1 = cv2.imread(referans_resim_yolu, 0) # Bizim parça (deneme.jpg)
+    img2 = cv2.imread(hedef_resim_yolu, 0)    # İnternetten bulunan parça
 
-    # Gri tonlamaya çevirme (Analiz hızı için şart)
-    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    if img1 is None or img2 is None:
+        return 0
 
-    # Pylance hatasını aşmak için alternatif yöntem:
+    # ORB Tanımlayıcı oluştur (Senin yazdığın Pylance güvenli yöntemi)
     try:
-        # Önce standart yöntemi dene
         orb = cv2.ORB_create()
-    except (AttributeError, Exception):
-        # Eğer tanımazsa direkt kütüphaneden zorlayarak çağır
+    except:
         orb = getattr(cv2, 'ORB_create')()
-        
-    keypoints, descriptors = orb.detectAndCompute(gray, None)
-    return f"Resim analiz edildi. {len(keypoints)} adet ayırt edici nokta bulundu."
-# --- BU KISIM DOSYANIN EN ALTINDA OLMALI ---
+
+    # Anahtar noktaları ve tanımlayıcıları bul
+    kp1, des1 = orb.detectAndCompute(img1, None)
+    kp2, des2 = orb.detectAndCompute(img2, None)
+
+    if des1 is None or des2 is None:
+        return 0
+
+    # Brute-Force Eşleştirici (BFMatcher) kullanarak noktaları kıyasla
+    bf = cv2.BFMatcher(cv2.NORM_HAMMING, crossCheck=True)
+    matches = bf.match(des1, des2)
+
+    # Mesafeye göre sırala (Daha kısa mesafe = daha çok benzerlik)
+    matches = sorted(matches, key=lambda x: x.distance)
+
+    # Benzerlik puanı hesapla (Eşleşen nokta sayısı / Toplam nokta sayısı)
+    skor = len(matches) / max(len(kp1), len(kp2)) * 100
+    return round(skor, 2)
+
 if __name__ == "__main__":
-    # Klasördeki resmin adını buraya tam doğru yazmalısın
     resim_adi = "deneme.jpg" 
-    
-    print(f"{resim_adi} analizi başlıyor...")
-    sonuc = resim_analiz_et(resim_adi)
-    print("SONUÇ:", sonuc)
+    print(f"📸 {resim_adi} üzerinden karşılaştırma motoru aktif.")
+    # Örnek kullanım:
+    # benzerlik = resim_karsilastir("deneme.jpg", "bulunan_ilan.jpg")
+    # print(f"Benzerlik Oranı: %{benzerlik}")
