@@ -1,62 +1,61 @@
 import geonamescache
-from selenium import webdriver
-from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.chrome.service import Service
-from webdriver_manager.chrome import ChromeDriverManager
+import undetected_chromedriver as uc
+import time
 
 def tum_dunya_koordinat_sozlugu_olustur():
-    """
-    Dünyadaki tüm ülkelerin merkez koordinatlarını güvenli bir şekilde döndürür.
-    Eksik veri (lat/lng) olan ülkeleri hata vermeden atlar.
-    """
+    """Tüm ülkelerin merkez koordinatlarını oluşturur."""
     gc = geonamescache.GeonamesCache()
     countries = gc.get_countries()
     global_coords = {}
     
     for code, info in countries.items():
-        # HATA DÜZELTME: Veri var mı kontrol et (KeyError: 'lat' önleyici)
         if 'lat' in info and 'lng' in info:
-            # Uzantıyı belirle (.tr, .az vb.)
             if info['tld']:
                 ext = "." + info['tld'].replace(".", "")
             else:
                 ext = f".{code.lower()}"
-                
             global_coords[ext] = {"lat": info['lat'], "lng": info['lng']}
             
+    # Hata önleyici manuel eklemeler
+    global_coords[".tr"] = {"lat": 38.9637, "lng": 35.2433} # Türkiye
+    global_coords[".com"] = {"lat": 37.0902, "lng": -95.7129} # Global/US
+    
     return global_coords
-# Koordinat veritabanını oluştur
+
 KOORDINAT_VERITABANI = tum_dunya_koordinat_sozlugu_olustur()
 
 def valentin_simulasyonu_baslat(sorgu, ulke_kodu, dil_kodu, ulke_uzantisi):
-    """
-    Tarayıcının GPS konumunu değiştirerek Berlin takılmasını çözer.
-    """
-    options = Options()
-    # Gerçek bir kullanıcı gibi davranmak için dilleri de ekleyelim
-    options.add_argument(f"--lang={dil_kodu}")
-    options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
+    """Google Bot korumasını aşan hayalet tarayıcı ile GPS simülasyonu yapar."""
     
-    driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options)
+    print("👻 HAYALET MODU: Google anti-bot kalkanı aşılıyor...")
+    
+    # Standart Selenium yerine "undetected_chromedriver" kullanıyoruz
+    options = uc.ChromeOptions()
+    options.add_argument(f"--lang={dil_kodu}")
+    
+    # Tarayıcıyı başlat
+    driver = uc.Chrome(options=options)
     
     # 1. Koordinatları al
-    nokta = KOORDINAT_VERITABANI.get(ulke_uzantisi, {"lat": 37.0902, "lng": -95.7129})
+    nokta = KOORDINAT_VERITABANI.get(ulke_uzantisi, {"lat": 38.9637, "lng": 35.2433})
     lat = float(nokta['lat'])
     lng = float(nokta['lng'])
 
-    # 2. KRİTİK ADIM: Tarayıcıyı o koordinata "Işınla" (Berlin'i unutturur)
+    # 2. Tarayıcıyı o koordinata "Işınla" 
     driver.execute_cdp_cmd("Emulation.setGeolocationOverride", {
         "latitude": lat,
         "longitude": lng,
         "accuracy": 100
     })
 
-    # 3. URL oluşturma (Google Maps kancası eklenmiş)
+    # 3. URL oluşturma (Sadece arama terimi ve bölge kodları)
     u_kodu = ulke_kodu.lower()
-    # Harita sonuçlarını tetiklemek için sorgu sonuna ülke ekliyoruz
-    google_url = f"https://www.google.com/search?q={sorgu}+{ulke_kodu}&gl={u_kodu}&hl={dil_kodu}&tbm=lcl"
+    google_url = f"https://www.google.com/search?q={sorgu}&gl={u_kodu}&hl={dil_kodu}"
     
-    print(f"🌍 KONUM BAŞARIYLA DEĞİŞTİRİLDİ: {ulke_uzantisi.upper()} ({lat}, {lng})")
+    print(f"🌍 KONUM IŞINLAMASI BAŞARILI: {ulke_uzantisi.upper()} ({lat}, {lng})")
     
+    # İnsan davranışı simülasyonu (hemen linke saldırmıyoruz)
     driver.get(google_url)
+    time.sleep(2) 
+    
     return driver
