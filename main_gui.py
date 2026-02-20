@@ -1,4 +1,8 @@
-import os
+import os 
+# Diğer importlarının (import vision_ai vb.) yanına bunları da ekle:
+from bs4 import BeautifulSoup
+import translator_bot
+import valentineapp
 
 # --- TensorFlow Kırmızı Yazıları Gizle ---
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
@@ -13,15 +17,6 @@ import pandas as pd
 import pycountry
 from PIL import Image
 
-# --- 2. GRUP: Özel Modüller (vision_ai BURADA) ---
-import vision_ai  # <--- Bu olmazsa vision hatası alırsın
-
-try:
-    from image_search_engine import global_pazar_taramasi
-    from maps_scraper import google_maps_tara
-    import visitor_tracker
-except ImportError as e:
-    print(f"⚠️ Modül Yükleme Hatası: {e}")
 
 # --- TASARIM AYARLARI ---
 ctk.set_appearance_mode("Dark") 
@@ -222,21 +217,86 @@ class ModernB2BApp(ctk.CTk):
         threading.Thread(target=self.web_search_worker, args=(oem, name, ulke['extension'], gtip), daemon=True).start()
 
     def web_search_worker(self, oem, name, ext, gtip):
+        driver = None 
         try:
-            # Küresel taramayı başlat
-            sonuclar = global_pazar_taramasi(oem, name, ext, gtip_no=gtip)
+            # 1. ÇEVİRİ
+            self.after(0, lambda: self.status_label.configure(text=f"🌍 Çevriliyor: {name}..."))
+            translated_name = translator_bot.akilli_cevirmen(name, ext)
+            self.after(0, lambda: self.status_label.configure(text=f"🗣️ Çeviri Başarılı: {translated_name}"))
+
+            # 2. IŞINLANMA VE B2B TİCARİ ODAKLAMA
+            ulke_kodu = ext.replace(".", "").upper() if ext != ".com" else "US"
+            dil_kodu = ext.replace(".", "").lower() if ext != ".com" else "en"
+
+            self.after(0, lambda: self.status_label.configure(text=f"🕵️ Valentin Bot: {ulke_kodu} pazarına sızılıyor..."))
             
-            # --- EXCEL KAYIT BAŞLANGIÇ ---
+            # --- YENİ EKLENEN KISIM: SADECE TİCARİ FİRMALARI ARATMA ---
+            # Böylece Wikipedia değil, alıcılar/distribütörler/toptancılar çıkar
+            b2b_sorgusu = f'"{translated_name}" (B2B OR distributor OR supplier OR wholesale OR autoparts)'
+            
+            # Chrome açılır (Artık b2b_sorgusu'nu aratıyoruz)
+            driver = valentineapp.valentin_simulasyonu_baslat(b2b_sorgusu, ulke_kodu, dil_kodu, ext)
+            time.sleep(5) # Google'ın tam yüklenmesi için bekliyoruz
+
+            # 3. AKILLI KAZIMA (Scraping) VE KARA LİSTE FİLTRESİ
+            self.after(0, lambda: self.status_label.configure(text="🌐 Potansiyel B2B alıcılar toplanıyor..."))
+            soup = BeautifulSoup(driver.page_source, "html.parser")
+            
+            siteler = soup.find_all("a")
+            
+            sonuclar = []
+            kaydedilen_linkler = set() # Aynı firmayı Excel'e iki kez yazmamak için
+            
+            # --- YENİ EKLENEN KISIM: İSTENMEYEN SİTELER KARA LİSTESİ ---
+            # Bu kelimeleri içeren hiçbir link Excel'e sızamaz
+            kara_liste = [
+                "wikipedia", "wiktionary", "dictionary", "sozluk", "youtube", 
+                "facebook", "instagram", "twitter", "pinterest", "amazon", 
+                "ebay", "aliexpress", "news", "haber", "trendyol", "hepsiburada"
+            ]
+
+            for site in siteler:
+                h3 = site.find("h3")
+                if h3:
+                    baslik = h3.text
+                    link = site.get("href", "")
+                    link_lower = link.lower() # Linki küçük harfe çevirip kontrol ediyoruz
+                    
+                    # Link kara listedeki kelimelerden birini içeriyorsa True olur
+                    yasakli_mi = any(yasak in link_lower for yasak in kara_liste)
+                    
+                    # Google yan linklerini, YouTube'u ve KARA LİSTEYİ ele
+                    if link and "google" not in link_lower and not yasakli_mi and link_lower not in kaydedilen_linkler:
+                        sonuclar.append({
+                            "Firma / Alıcı Başlığı": baslik, 
+                            "Web Sitesi": link, 
+                            "Aranan Terim": translated_name, 
+                            "Hedef Pazar": ext
+                        })
+                        kaydedilen_linkler.add(link_lower)
+                        print(f"🎯 TİCARİ FİRMA YAKALANDI: {baslik}")
+
+            driver.quit()
+
+            # 4. EXCEL VE ARAYÜZ BİLDİRİMİ
             if sonuclar:
                 df = pd.DataFrame(sonuclar)
-                dosya_adi = f"B2B_Analiz_{name.replace(' ', '_')}_{ext}.xlsx"
+                dosya_adi = f"Kuresel_Valentin_{translated_name.replace(' ', '_')}_{ext}.xlsx"
                 df.to_excel(dosya_adi, index=False)
-                print(f"📊 Veriler {dosya_adi} dosyasına kaydedildi.")
-            # --- EXCEL KAYIT BİTİŞ ---
+                
+                self.after(0, lambda: self.status_label.configure(text=f"✅ BİTTİ: {len(sonuclar)} firma kaydedildi."))
+                print(f"📊 Rapor Hazır: {dosya_adi}")
+            else:
+                self.after(0, lambda: self.status_label.configure(text="⚠️ Uyarı: Ticari sonuç bulunamadı."))
+                self.after(0, lambda: messagebox.showwarning("Sonuç Yok", "B2B kriterlerine uygun firma bulunamadı. Lütfen ürün tanımını detaylandırın."))
 
             self.after(0, lambda: self.search_finished(len(sonuclar)))
+
         except Exception as e:
-            self.after(0, lambda: messagebox.showerror("Hata", str(e)))
+            self.after(0, lambda: messagebox.showerror("Hata", f"Küresel Analiz Hatası: {str(e)}"))
+            self.after(0, lambda: self.status_label.configure(text="❌ Sistem Hatası Oluştu."))
+            if driver:
+                driver.quit()
 
     def start_vision_search_thread(self):
         if not self.secili_resim_yolu: return
