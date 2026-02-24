@@ -1,78 +1,119 @@
-from selenium import webdriver
-from selenium.webdriver.chrome.service import Service
-from selenium.webdriver.chrome.options import Options
+import undetected_chromedriver as uc
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
-from webdriver_manager.chrome import ChromeDriverManager
 import time
+import geonamescache
 
-# --- ENTEGRASYON BÖLÜMÜ ---
 try:
     from image_search_engine import teknik_terim_dogrula_ve_cevir
-    # Valentineapp'teki devasa koordinat veritabanını çekiyoruz
-    from valentineapp import KOORDINAT_VERITABANI 
 except ImportError:
-    print("Uyarı: Gerekli modüller (valentineapp veya image_search_engine) bulunamadı.")
-    KOORDINAT_VERITABANI = {}
+    print("Uyarı: Gerekli modüller bulunamadı.")
 
-def google_maps_tara(sector, country_ext, limit=10):
+# --- AKILLI KOORDİNAT SİSTEMİ ---
+def akilli_koordinat_bul(ulke_uzantisi):
     """
-    Valentineapp koordinat veritabanını kullanarak tüm dünyada 
-    nokta atışı harita taraması yapar.
+    Hedef pazarın uzantısına göre en doğru enlem ve boylamı verir.
     """
-    # 1. ADIM: Sektör Çevirisi (Yerelleştirme)
+    garanti_koordinatlar = {
+        ".com": {"lat": 37.0902, "lng": -95.7129},  
+        ".tr": {"lat": 38.9637, "lng": 35.2433},    
+        ".jp": {"lat": 36.2048, "lng": 138.2529},   
+        ".de": {"lat": 51.1657, "lng": 10.4515},    
+        ".fr": {"lat": 46.2276, "lng": 2.2137},     
+        ".es": {"lat": 40.4637, "lng": -3.7492},    
+        ".it": {"lat": 41.8719, "lng": 12.5674},    
+        ".ru": {"lat": 61.5240, "lng": 105.3188},   
+        ".ae": {"lat": 23.4241, "lng": 53.8478},    
+        ".cn": {"lat": 35.8617, "lng": 104.1954},   
+        ".kr": {"lat": 35.9078, "lng": 127.7669},   
+        ".uk": {"lat": 55.3781, "lng": -3.4360}     
+    }
+    
+    if ulke_uzantisi in garanti_koordinatlar:
+        return garanti_koordinatlar[ulke_uzantisi]
+        
+    try:
+        gc = geonamescache.GeonamesCache()
+        for code, info in gc.get_countries().items():
+            if info.get('tld') == ulke_uzantisi.replace(".", "") or f".{code.lower()}" == ulke_uzantisi:
+                 return {"lat": info['lat'], "lng": info['lng']}
+    except Exception as e:
+        print(f"Koordinat kütüphanesi hatası: {e}")
+             
+    return {"lat": 37.0902, "lng": -95.7129}
+
+# --- ANA HARİTA TARAMA FONKSİYONU ---
+def google_maps_tara(sector, country_ext, limit=15):
+    """
+    Hayalet tarayıcı ile Google Maps engellerini aşarak veri çeker.
+    """
+    
+    # 1. ADIM: Sektör Çevirisi
     try:
         yerel_arama_terimi = teknik_terim_dogrula_ve_cevir(sector, country_ext)
     except:
         yerel_arama_terimi = sector
 
-    # 2. ADIM: Koordinat Çekme (Valentineapp Entegrasyonu)
-    # Veritabanından o ülkenin GPS verisini alıyoruz
-    nokta = KOORDINAT_VERITABANI.get(country_ext, {"lat": 38.9637, "lng": 35.2433})
-    selected_coord = f"{nokta['lat']},{nokta['lng']}"
+    # --- İŞTE YENİ HAYALET TARAYICI (UNDETECTED CHROMEDRIVER) ---
+    print("👻 HAYALET MODU AKTİF: Google Maps anti-bot kalkanı aşılıyor...")
+    options = uc.ChromeOptions()
+    options.add_argument("--window-size=1920,1080")
     
-    print(f"🛰️ {country_ext} Koordinatları Bağlandı: {selected_coord}")
-
-    chrome_options = Options()
-    # Harita sonuçlarını daha iyi yakalamak için pencereyi geniş tutuyoruz
-    chrome_options.add_argument("--window-size=1920,1080")
-    chrome_options.add_argument(f"--lang={country_ext.replace('.','')}") 
+    lang_code = "en" if country_ext == ".com" else country_ext.replace('.','')
+    options.add_argument(f"--lang={lang_code}") 
     
-    driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=chrome_options)
+    driver = uc.Chrome(options=options)
     
     try:
-        # Alan adı ve arama terimi hazırlığı
-        domain = f"google.{country_ext.replace('.','')}" if country_ext != ".com" else "google.com"
-        search_query = yerel_arama_terimi.replace(" ", "+")
+        target_url = ""
         
-        # URL'e koordinatları enjekte ediyoruz (@ koordinatı)
-        target_url = f"https://www.{domain}/maps/search/{search_query}/@{selected_coord},12z"
-        
-        print(f"🚀 Küresel Harita Taraması Başladı: {target_url}")
+        # 2. ADIM: URL ve Konum Ayarlama
+        if country_ext == ".com":
+            print(f"🌐 GLOBAL MOD SEÇİLDİ: Konum kısıtlaması kaldırılıyor...")
+            target_url = f"https://www.google.com/maps/search/{yerel_arama_terimi.replace(' ', '+')}"
+            
+        else:
+            nokta = akilli_koordinat_bul(country_ext)
+            lat = float(nokta['lat'])
+            lng = float(nokta['lng'])
+            
+            print(f"📍 {country_ext} MODU: {lat}, {lng} koordinatlarına ışınlanılıyor.")
+
+            driver.execute_cdp_cmd("Emulation.setGeolocationOverride", {
+                "latitude": lat,
+                "longitude": lng,
+                "accuracy": 100
+            })
+
+            domain = f"google.{country_ext.replace('.','')}"
+            if country_ext == ".jp" or country_ext == ".uk":
+                domain = f"google.co{country_ext}" 
+
+            target_url = f"https://www.{domain}/maps/search/{yerel_arama_terimi.replace(' ', '+')}/@{lat},{lng},10z"
+
+        # 3. ADIM: Tarayıcıyı Başlat
+        print(f"🚀 Tarayıcı Açılıyor: {target_url}")
         driver.get(target_url)
 
-        # 3. ADIM: Dinamik Yükleme Beklemesi
         wait = WebDriverWait(driver, 15)
         try:
-            # Google Maps'teki işletme kartlarının güncel sınıfı: hfpxzc
             wait.until(EC.presence_of_element_located((By.CLASS_NAME, "hfpxzc")))
         except:
-            print(f"⚠️ {country_ext} bölgesinde '{yerel_arama_terimi}' için sonuç bulunamadı.")
+            print(f"⚠️ Sonuç bulunamadı veya geç yüklendi.")
             return []
 
-        # 4. ADIM: Lazy Loading Tetikleme (Scroll)
-        # Daha fazla sonuç çekmek için harita listesini aşağı kaydırır
+        # 4. ADIM: Scroll
+        scroll_count = 5 if country_ext == ".com" else 2
         try:
-            # Harita yan panelindeki kaydırılabilir alanı bul
             scrollable_div = driver.find_element(By.CSS_SELECTOR, 'div[role="feed"]')
-            for _ in range(2):
+            for i in range(scroll_count):
                 driver.execute_script('arguments[0].scrollTop = arguments[0].scrollHeight', scrollable_div)
                 time.sleep(2)
         except:
-            pass # Scroll alanı bulunamazsa devam et
+            pass
 
-        # 5. ADIM: Veri Ayıklama
+        # 5. ADIM: Verileri Topla
         results = []
         items = driver.find_elements(By.CLASS_NAME, "hfpxzc") 
         
@@ -89,7 +130,7 @@ def google_maps_tara(sector, country_ext, limit=10):
         return results
 
     except Exception as e:
-        print(f"❌ Harita Modülünde Hata: {e}")
+        print(f"❌ Hata: {e}")
         return []
     finally:
         driver.quit()
