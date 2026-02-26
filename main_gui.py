@@ -1,5 +1,4 @@
 import os 
-# Diğer importlarının (import vision_ai vb.) yanına bunları da ekle:
 from bs4 import BeautifulSoup
 import translator_bot
 import valentineapp
@@ -8,8 +7,8 @@ import valentineapp
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
 
-# --- 1. GRUP: Temel Kütüphaneler (ctk BURADA) ---
-import customtkinter as ctk  # <--- HATA BUNUN EKSİKLİĞİNDEN KAYNAKLANIYOR
+# --- 1. GRUP: Temel Kütüphaneler ---
+import customtkinter as ctk 
 from tkinter import messagebox, filedialog
 import threading
 import time
@@ -17,12 +16,9 @@ import pandas as pd
 import pycountry
 from PIL import Image
 
-
 # --- TASARIM AYARLARI ---
 ctk.set_appearance_mode("Dark") 
 ctk.set_default_color_theme("blue") 
-
-# ... Kodun geri kalanı (class ModernB2BApp...) buradan devam etsin ...
 
 # --- YARDIMCI FONKSİYONLAR ---
 def dunya_verilerini_hazirla():
@@ -45,12 +41,9 @@ try:
     from image_search_engine import global_pazar_taramasi
     from maps_scraper import google_maps_tara
     import visitor_tracker
+    from vision_ai import resmi_analiz_et # 🧠 YAPAY ZEKA MODÜLÜ EKLENDİ
 except ImportError:
     print("Uyarı: Bazı modül dosyaları bulunamadı. Lütfen tüm .py dosyalarının aynı klasörde olduğunu kontrol edin.")
-
-# --- TASARIM AYARLARI ---
-ctk.set_appearance_mode("Dark") 
-ctk.set_default_color_theme("blue") 
 
 class ModernB2BApp(ctk.CTk):
     def __init__(self):
@@ -186,6 +179,10 @@ class ModernB2BApp(ctk.CTk):
         self.vision_run_btn = ctk.CTkButton(self.main_container, text="GÖRSEL ANALİZİ BAŞLAT", width=400, height=50, corner_radius=25,
                                             command=self.start_vision_search_thread)
         self.vision_run_btn.pack(pady=20)
+        
+        # 🛠️ GÜVENLİK YAMASI: Vision panelinde çökmeyi önlemek için status_label eklendi
+        self.status_label = ctk.CTkLabel(self.main_container, text="SİSTEM DURUMU: BEKLEMEDE")
+        self.status_label.pack(pady=10)
 
     def action_upload_image(self):
         file_path = filedialog.askopenfilename(filetypes=[("Resim Dosyaları", "*.jpg *.jpeg *.png")])
@@ -219,36 +216,28 @@ class ModernB2BApp(ctk.CTk):
     def web_search_worker(self, oem, name, ext, gtip):
         driver = None 
         try:
-            # 1. ÇEVİRİ
             self.after(0, lambda: self.status_label.configure(text=f"🌍 Çevriliyor: {name}..."))
             translated_name = translator_bot.akilli_cevirmen(name, ext)
             self.after(0, lambda: self.status_label.configure(text=f"🗣️ Çeviri Başarılı: {translated_name}"))
 
-            # 2. IŞINLANMA VE B2B TİCARİ ODAKLAMA
             ulke_kodu = ext.replace(".", "").upper() if ext != ".com" else "US"
             dil_kodu = ext.replace(".", "").lower() if ext != ".com" else "en"
 
             self.after(0, lambda: self.status_label.configure(text=f"🕵️ Valentin Bot: {ulke_kodu} pazarına sızılıyor..."))
             
-            # --- YENİ EKLENEN KISIM: SADECE TİCARİ FİRMALARI ARATMA ---
-            # Böylece Wikipedia değil, alıcılar/distribütörler/toptancılar çıkar
             b2b_sorgusu = f'"{translated_name}" (B2B OR distributor OR supplier OR wholesale OR autoparts)'
             
-            # Chrome açılır (Artık b2b_sorgusu'nu aratıyoruz)
             driver = valentineapp.valentin_simulasyonu_baslat(b2b_sorgusu, ulke_kodu, dil_kodu, ext)
-            time.sleep(5) # Google'ın tam yüklenmesi için bekliyoruz
+            time.sleep(5) 
 
-            # 3. AKILLI KAZIMA (Scraping) VE KARA LİSTE FİLTRESİ
             self.after(0, lambda: self.status_label.configure(text="🌐 Potansiyel B2B alıcılar toplanıyor..."))
             soup = BeautifulSoup(driver.page_source, "html.parser")
             
             siteler = soup.find_all("a")
             
             sonuclar = []
-            kaydedilen_linkler = set() # Aynı firmayı Excel'e iki kez yazmamak için
+            kaydedilen_linkler = set() 
             
-            # --- YENİ EKLENEN KISIM: İSTENMEYEN SİTELER KARA LİSTESİ ---
-            # Bu kelimeleri içeren hiçbir link Excel'e sızamaz
             kara_liste = [
                 "wikipedia", "wiktionary", "dictionary", "sozluk", "youtube", 
                 "facebook", "instagram", "twitter", "pinterest", "amazon", 
@@ -260,12 +249,10 @@ class ModernB2BApp(ctk.CTk):
                 if h3:
                     baslik = h3.text
                     link = site.get("href", "")
-                    link_lower = link.lower() # Linki küçük harfe çevirip kontrol ediyoruz
+                    link_lower = link.lower() 
                     
-                    # Link kara listedeki kelimelerden birini içeriyorsa True olur
                     yasakli_mi = any(yasak in link_lower for yasak in kara_liste)
                     
-                    # Google yan linklerini, YouTube'u ve KARA LİSTEYİ ele
                     if link and "google" not in link_lower and not yasakli_mi and link_lower not in kaydedilen_linkler:
                         sonuclar.append({
                             "Firma / Alıcı Başlığı": baslik, 
@@ -278,7 +265,6 @@ class ModernB2BApp(ctk.CTk):
 
             driver.quit()
 
-            # 4. EXCEL VE ARAYÜZ BİLDİRİMİ
             if sonuclar:
                 df = pd.DataFrame(sonuclar)
                 dosya_adi = f"Kuresel_Valentin_{translated_name.replace(' ', '_')}_{ext}.xlsx"
@@ -299,58 +285,69 @@ class ModernB2BApp(ctk.CTk):
                 driver.quit()
 
     def start_vision_search_thread(self):
-        if not self.secili_resim_yolu: return
+        if not self.secili_resim_yolu: 
+            messagebox.showwarning("Eksik", "Lütfen analiz için bir fotoğraf yükleyin!")
+            return
         display_name = self.vision_country_combo.get()
         ulke = next((u for u in self.ulke_listesi if u["display"] == display_name), self.ulke_listesi[0])
+        self.vision_run_btn.configure(state="disabled")
         threading.Thread(target=self.vision_worker, args=(ulke,), daemon=True).start()
         
+    # --- 🧠 YAPAY ZEKA ENTEGRE EDİLMİŞ GÖRSEL İŞÇİ FONKSİYONU ---
     def vision_worker(self, ulke):
         try:
-            detected = "Brake Pad" if "brake" in self.secili_resim_yolu.lower() else "Spare Part"
-            self.after(0, lambda: self.status_label.configure(text=f"⚙️ Analiz: {detected} taranıyor..."))
+            self.after(0, lambda: self.status_label.configure(text="🤖 Yapay Zeka Görseli Analiz Ediyor..."))
             
-            m_results = google_maps_tara(detected, ulke['extension'])
-            w_results = global_pazar_taramasi("", detected, ulke['extension'])
+            # 1. Aşama: Resmi TensorFlow'a gönder ve İngilizce ne olduğunu bul
+            detected_ai_name = resmi_analiz_et(self.secili_resim_yolu)
+            
+            if not detected_ai_name:
+                self.after(0, lambda: messagebox.showerror("Hata", "Görseldeki nesne tespit edilemedi."))
+                self.after(0, lambda: self.status_label.configure(text="❌ Analiz Başarısız."))
+                self.after(0, lambda: self.vision_run_btn.configure(state="normal"))
+                return
+
+            self.after(0, lambda: self.status_label.configure(text=f"🎯 Tespit Edildi: {detected_ai_name.upper()} | Harita Taranıyor..."))
+            
+            # 2. Aşama: Bulunan kelimeyle harita ve global aramayı otonom tetikle
+            m_results = google_maps_tara(detected_ai_name, ulke['extension'])
+            w_results = global_pazar_taramasi("", detected_ai_name, ulke['extension'])
             
             tum_liste = m_results + w_results
             if tum_liste:
                 df = pd.DataFrame(tum_liste)
-                dosya_adi = f"Gorsel_Analiz_{detected}_{ulke['extension']}.xlsx"
+                dosya_adi = f"Gorsel_Analiz_{detected_ai_name.replace(' ', '_')}_{ulke['extension']}.xlsx"
                 df.to_excel(dosya_adi, index=False)
                 print(f"✅ Görsel tarama sonuçları {dosya_adi} içine aktarıldı.")
 
-            self.after(0, lambda: messagebox.showinfo("Başarılı", f"Tarama bitti! Toplam {len(tum_liste)} firma kaydedildi."))
+                self.after(0, lambda: messagebox.showinfo("Başarılı", f"Tarama bitti! Toplam {len(tum_liste)} firma kaydedildi."))
+                self.after(0, lambda: self.status_label.configure(text=f"✅ Analiz Tamamlandı!"))
+            else:
+                self.after(0, lambda: messagebox.showwarning("Sonuç Yok", "Arama yapıldı ancak Excel'e yazılacak firma bulunamadı."))
+                self.after(0, lambda: self.status_label.configure(text="⚠️ Sonuç Bulunamadı."))
+                
         except Exception as e:
             self.after(0, lambda: messagebox.showerror("Hata", str(e)))
+            self.after(0, lambda: self.status_label.configure(text="❌ Sistem Hatası."))
+        finally:
+            self.after(0, lambda: self.vision_run_btn.configure(state="normal"))
 
-    # --- DÜZELTİLEN HARİTA BAŞLATMA FONKSİYONU ---
     def run_map_process(self):
-        # 1. Giriş verilerini al
         name = self.name_entry.get() if hasattr(self, 'name_entry') else ""
         secilen = self.country_combo.get() if hasattr(self, 'country_combo') else ".com"
-        
-        # 2. Ülke kodunu çöz
         ulke = next((u for u in self.ulke_listesi if u["display"] == secilen), self.ulke_listesi[0])
         
-        # 3. Giriş kontrolü
         if not name:
             messagebox.showwarning("Eksik Bilgi", "Lütfen önce 'ÜRÜN TANIMI' alanına aranacak sektörü yazın.")
             return
 
-        # 4. Thread'i DOĞRU fonksiyonla (map_worker) başlat
-        # Önceki hatan burada: 'target=lambda: google_maps_tara...' diyordun.
-        # Bu sadece taramayı yapar ama kayıt etmez. 'map_worker' ise kaydeder.
         threading.Thread(target=self.map_worker, args=(name, ulke['extension']), daemon=True).start()
 
-    # --- EKSİK OLAN HARİTA ÇALIŞANI (WORKER) ---
     def map_worker(self, name, country):
         try:
             self.after(0, lambda: self.status_label.configure(text=f"📍 Harita Taranıyor: {name} ({country})"))
-            
-            # Taramayı yap
             sonuclar = google_maps_tara(name, country)
             
-            # Excel'e Kaydet
             if sonuclar:
                 temiz_isim = name.replace(" ", "_")
                 dosya_adi = f"Harita_{temiz_isim}_{country}.xlsx"
