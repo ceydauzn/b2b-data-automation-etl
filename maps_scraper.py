@@ -63,7 +63,8 @@ def google_maps_tara(sector, country_ext, limit=15):
     lang_code = "en" if country_ext == ".com" else country_ext.replace('.','')
     options.add_argument(f"--lang={lang_code}") 
     
-    driver = uc.Chrome(options=options)
+    # SADECE BU SATIR DEĞİŞTİRİLDİ (version_main=145 eklendi)
+    driver = uc.Chrome(options=options, version_main=145)
     
     try:
         target_url = ""
